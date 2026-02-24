@@ -1,0 +1,263 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import {
+    ReactFlow,
+    Background,
+    Controls,
+    Panel,
+    useNodesState,
+    useEdgesState,
+    addEdge,
+    BackgroundVariant,
+    type Edge,
+    type Node,
+    type OnConnect,
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
+import { Save, Loader2, CheckCircle2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
+import { db } from "@/lib/db";
+import { VideoNode, type VideoNodeData } from "@/components/flow/video-node";
+
+const FLOW_ID = "default";
+
+const nodeTypes = { videoNode: VideoNode };
+
+const defaultNodes: Node<VideoNodeData>[] = [
+    {
+        id: "start",
+        type: "videoNode",
+        position: { x: 300, y: 0 },
+        data: {
+            label: "Start Node",
+            prompt: "A hero stands at a crossroads in a dark forest...",
+            variant: "start",
+        },
+    },
+    {
+        id: "scene-a",
+        type: "videoNode",
+        position: { x: 80, y: 300 },
+        data: {
+            label: "Scene A",
+            prompt: "The hero chooses the left path into the cave...",
+            variant: "scene",
+        },
+    },
+    {
+        id: "scene-b",
+        type: "videoNode",
+        position: { x: 520, y: 300 },
+        data: {
+            label: "Scene B",
+            prompt: "The hero takes the right path across the bridge...",
+            variant: "scene",
+        },
+    },
+    {
+        id: "ending",
+        type: "videoNode",
+        position: { x: 300, y: 600 },
+        data: {
+            label: "Ending Node",
+            prompt: "The paths converge at the ancient temple...",
+            variant: "ending",
+        },
+    },
+];
+
+const defaultEdges: Edge[] = [
+    {
+        id: "start-a",
+        source: "start",
+        target: "scene-a",
+        animated: true,
+        style: { stroke: "oklch(0.7 0.15 250)", strokeWidth: 2 },
+    },
+    {
+        id: "start-b",
+        source: "start",
+        target: "scene-b",
+        animated: true,
+        style: { stroke: "oklch(0.7 0.15 250)", strokeWidth: 2 },
+    },
+    {
+        id: "a-ending",
+        source: "scene-a",
+        target: "ending",
+        animated: true,
+        style: { stroke: "oklch(0.7 0.15 250)", strokeWidth: 2 },
+    },
+    {
+        id: "b-ending",
+        source: "scene-b",
+        target: "ending",
+        animated: true,
+        style: { stroke: "oklch(0.7 0.15 250)", strokeWidth: 2 },
+    },
+];
+
+const DUMMY_VIDEO_URL = "https://www.w3schools.com/html/mov_bbb.mp4";
+
+export function StoryFlowEditor() {
+    const [nodes, setNodes, onNodesChange] = useNodesState(defaultNodes);
+    const [edges, setEdges, onEdgesChange] = useEdgesState(defaultEdges);
+    const [isSaving, setIsSaving] = useState(false);
+    const [isLoaded, setIsLoaded] = useState(false);
+
+    // ── Handle video generation for a specific node ──
+    const handleGenerate = useCallback(
+        (nodeId: string, prompt: string) => {
+            setNodes((nds) =>
+                nds.map((node) => {
+                    if (node.id === nodeId) {
+                        return {
+                            ...node,
+                            data: {
+                                ...node.data,
+                                videoUrl: DUMMY_VIDEO_URL,
+                                prompt,
+                            },
+                        };
+                    }
+                    return node;
+                })
+            );
+        },
+        [setNodes]
+    );
+
+    // ── Inject onGenerate callback into every node's data ──
+    const nodesWithCallback = nodes.map((node) => ({
+        ...node,
+        data: {
+            ...node.data,
+            onGenerate: handleGenerate,
+        },
+    }));
+
+    // ── Load flow from IndexedDB on mount ──
+    useEffect(() => {
+        const loadFlow = async () => {
+            try {
+                const saved = await db.flows.get(FLOW_ID);
+                if (saved) {
+                    const loadedNodes = JSON.parse(saved.nodes) as Node<VideoNodeData>[];
+                    const loadedEdges = JSON.parse(saved.edges) as Edge[];
+                    setNodes(loadedNodes);
+                    setEdges(loadedEdges);
+                    toast.info("フローを復元しました", {
+                        description: "前回保存した状態を読み込みました。",
+                    });
+                }
+            } catch {
+                // First time or error — use defaults
+            } finally {
+                setIsLoaded(true);
+            }
+        };
+        loadFlow();
+    }, [setNodes, setEdges]);
+
+    // ── Save flow to IndexedDB ──
+    const handleSave = useCallback(async () => {
+        setIsSaving(true);
+        try {
+            // Strip onGenerate callback before serializing
+            const cleanNodes = nodes.map(({ data, ...rest }) => {
+                const { onGenerate, ...cleanData } = data;
+                return { ...rest, data: cleanData };
+            });
+
+            await db.flows.put({
+                id: FLOW_ID,
+                nodes: JSON.stringify(cleanNodes),
+                edges: JSON.stringify(edges),
+                updatedAt: Date.now(),
+            });
+
+            toast.success("フローを保存しました！", {
+                description: `${nodes.length} ノード・${edges.length} エッジ`,
+            });
+        } catch {
+            toast.error("保存に失敗しました");
+        } finally {
+            setTimeout(() => setIsSaving(false), 800);
+        }
+    }, [nodes, edges]);
+
+    const onConnect: OnConnect = useCallback(
+        (params) => {
+            setEdges((eds) =>
+                addEdge(
+                    {
+                        ...params,
+                        animated: true,
+                        style: { stroke: "oklch(0.7 0.15 250)", strokeWidth: 2 },
+                    },
+                    eds
+                )
+            );
+        },
+        [setEdges]
+    );
+
+    if (!isLoaded) {
+        return (
+            <div className="flex h-full items-center justify-center">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+        );
+    }
+
+    return (
+        <div className="h-full w-full">
+            <ReactFlow
+                nodes={nodesWithCallback}
+                edges={edges}
+                onNodesChange={onNodesChange}
+                onEdgesChange={onEdgesChange}
+                onConnect={onConnect}
+                nodeTypes={nodeTypes}
+                fitView
+                fitViewOptions={{ padding: 0.3 }}
+                proOptions={{ hideAttribution: true }}
+                className="bg-background"
+            >
+                <Background
+                    variant={BackgroundVariant.Dots}
+                    gap={20}
+                    size={1}
+                    color="oklch(0.4 0.01 286)"
+                />
+                <Controls
+                    className="!rounded-lg !border !border-border !bg-card !shadow-lg [&>button]:!border-border [&>button]:!bg-card [&>button]:!text-foreground [&>button:hover]:!bg-accent"
+                />
+
+                {/* Save Flow button — top-right panel */}
+                <Panel position="top-right">
+                    <Button
+                        onClick={handleSave}
+                        disabled={isSaving}
+                        size="sm"
+                        className="gap-2 shadow-lg"
+                    >
+                        {isSaving ? (
+                            <>
+                                <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                                Saved!
+                            </>
+                        ) : (
+                            <>
+                                <Save className="h-4 w-4" />
+                                Save Flow
+                            </>
+                        )}
+                    </Button>
+                </Panel>
+            </ReactFlow>
+        </div>
+    );
+}
