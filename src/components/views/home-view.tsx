@@ -14,11 +14,13 @@ interface FlowNode {
     label: string;
     videoUrl?: string;
     variant?: string;
+    branchLabel?: string;
 }
 
 interface BranchChoice {
     id: string;
     label: string;
+    branchLabel?: string;
     videoUrl?: string;
 }
 
@@ -52,6 +54,7 @@ export function HomeView() {
                         label: n.data.label,
                         videoUrl: n.data.videoUrl,
                         variant: n.data.variant,
+                        branchLabel: n.data.branchLabel,
                     }));
 
                     setFlowNodes(mapped);
@@ -89,6 +92,7 @@ export function HomeView() {
                 return {
                     id: targetNode.id,
                     label: targetNode.label,
+                    branchLabel: targetNode.branchLabel,
                     videoUrl: targetNode.videoUrl,
                 };
             })
@@ -278,7 +282,7 @@ export function HomeView() {
 
                             {/* Label */}
                             <h3 className="max-w-[80%] text-center text-base font-bold uppercase tracking-wider text-white drop-shadow-lg transition-all duration-300 group-hover:scale-105 md:text-lg">
-                                {branch.label}
+                                {branch.branchLabel || branch.label}
                             </h3>
 
                             {/* Tap hint */}

@@ -2,7 +2,7 @@
 
 import { memo, useState } from "react";
 import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
-import { Film, Sparkles, Play, Flag, Loader2, CheckCircle2 } from "lucide-react";
+import { Film, Sparkles, Play, Flag, Loader2, CheckCircle2, MessageSquare } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,10 @@ export type VideoNodeData = {
     prompt?: string;
     variant?: "start" | "scene" | "ending";
     videoUrl?: string;
+    branchLabel?: string;   // Choice text shown to viewers (e.g. "Enter the forest")
+    duration?: 4 | 8;       // Video generation length in seconds
     onGenerate?: (nodeId: string, prompt: string) => void;
+    onDataChange?: (nodeId: string, key: string, value: string | number) => void;
 };
 
 type VideoNodeType = Node<VideoNodeData, "videoNode">;
@@ -45,14 +48,15 @@ const DUMMY_VIDEO_URL =
 
 function VideoNodeComponent({ id, data, selected }: NodeProps<VideoNodeType>) {
     const [prompt, setPrompt] = useState(data.prompt || "");
+    const [branchLabel, setBranchLabel] = useState(data.branchLabel || "");
     const [isGenerating, setIsGenerating] = useState(false);
     const [isGenerated, setIsGenerated] = useState(!!data.videoUrl);
     const variant = data.variant || "scene";
+    const duration = data.duration || 4;
     const config = variantConfig[variant];
     const Icon = config.icon;
 
     const handleGenerate = async () => {
-        // Check for API key in localStorage
         const lumaKey = localStorage.getItem("branchy_api_luma");
         const runwayKey = localStorage.getItem("branchy_api_runway");
 
@@ -72,19 +76,23 @@ function VideoNodeComponent({ id, data, selected }: NodeProps<VideoNodeType>) {
         }
 
         setIsGenerating(true);
-
-        // Mock 3-second API call
         await new Promise((resolve) => setTimeout(resolve, 3000));
-
-        // Call the parent's onGenerate to update node data
         data.onGenerate?.(id, prompt);
-
         setIsGenerating(false);
         setIsGenerated(true);
 
         toast.success("動画が生成されました！", {
-            description: `${data.label} のシーンが完成しました。`,
+            description: `${data.label} — ${duration}秒のシーンが完成しました。`,
         });
+    };
+
+    const handleDurationChange = (newDuration: 4 | 8) => {
+        data.onDataChange?.(id, "duration", newDuration);
+    };
+
+    const handleBranchLabelChange = (value: string) => {
+        setBranchLabel(value);
+        data.onDataChange?.(id, "branchLabel", value);
     };
 
     const hasVideo = data.videoUrl || isGenerated;
@@ -102,7 +110,7 @@ function VideoNodeComponent({ id, data, selected }: NodeProps<VideoNodeType>) {
 
             <Card
                 className={cn(
-                    "w-[240px] border-border/60 bg-card/95 shadow-xl backdrop-blur-sm transition-all",
+                    "w-[260px] border-border/60 bg-card/95 shadow-xl backdrop-blur-sm transition-all",
                     selected && "ring-2 ring-primary"
                 )}
             >
@@ -149,14 +157,60 @@ function VideoNodeComponent({ id, data, selected }: NodeProps<VideoNodeType>) {
                                 </span>
                             </div>
                         )}
+
+                        {/* Duration badge (top-right) */}
+                        <div className="absolute top-1.5 right-1.5 rounded-full bg-black/60 px-2 py-0.5 text-[9px] font-bold text-white/80">
+                            {duration}s
+                        </div>
                     </div>
 
                     {/* Content */}
-                    <div className="space-y-3 p-3">
-                        {/* Title */}
-                        <h3 className="text-sm font-semibold tracking-tight">
-                            {data.label}
-                        </h3>
+                    <div className="space-y-2.5 p-3">
+                        {/* Title + Duration toggle row */}
+                        <div className="flex items-center justify-between gap-2">
+                            <h3 className="text-sm font-semibold tracking-tight">
+                                {data.label}
+                            </h3>
+
+                            {/* 4s / 8s Toggle */}
+                            <div className="flex h-6 overflow-hidden rounded-md border border-border bg-muted/50 text-[10px] font-medium">
+                                <button
+                                    onClick={() => handleDurationChange(4)}
+                                    className={cn(
+                                        "px-2 transition-all",
+                                        duration === 4
+                                            ? "bg-primary text-primary-foreground"
+                                            : "text-muted-foreground hover:text-foreground"
+                                    )}
+                                >
+                                    4s
+                                </button>
+                                <button
+                                    onClick={() => handleDurationChange(8)}
+                                    className={cn(
+                                        "px-2 transition-all",
+                                        duration === 8
+                                            ? "bg-primary text-primary-foreground"
+                                            : "text-muted-foreground hover:text-foreground"
+                                    )}
+                                >
+                                    8s
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Branch label (choice text for viewers) — not shown on Start */}
+                        {variant !== "start" && (
+                            <div className="flex items-center gap-1.5">
+                                <MessageSquare className="h-3 w-3 shrink-0 text-muted-foreground" />
+                                <Input
+                                    value={branchLabel}
+                                    onChange={(e) => handleBranchLabelChange(e.target.value)}
+                                    placeholder="Choice text (e.g. 森に入る)"
+                                    className="h-7 text-[11px]"
+                                />
+                            </div>
+                        )}
 
                         {/* Prompt input */}
                         <Input
