@@ -226,7 +226,7 @@ export function StoryFlowEditor() {
         }
     }, [nodes, edges]);
 
-    // ── Add new node (with limit check) ──
+    // ── Add new node (with limit check + auto-connect to selected node) ──
     const handleAddNode = useCallback(() => {
         if (nodes.length >= MAX_NODES) {
             toast.error("ノード上限に達しました", {
@@ -236,13 +236,35 @@ export function StoryFlowEditor() {
             return;
         }
 
+        // Find selected node as parent
+        const selectedNode = nodes.find((n) => n.selected);
+        if (!selectedNode) {
+            toast.error("親ノードを選択してください", {
+                description: "ノードをクリックして選択してから「Add Node」を押してください。",
+            });
+            return;
+        }
+
+        // Prevent adding children to ending nodes
+        if (selectedNode.data.variant === "ending") {
+            toast.error("エンディングノードには分岐を追加できません", {
+                description: "シーンノードを選択してください。",
+            });
+            return;
+        }
+
         const newId = `node-${nodeIdCounter++}`;
+
+        // Position below the selected node, offset slightly to avoid overlap
+        const existingChildren = edges.filter((e) => e.source === selectedNode.id);
+        const offsetX = (existingChildren.length - 0.5) * 260;
+
         const newNode: Node<VideoNodeData> = {
             id: newId,
             type: "videoNode",
             position: {
-                x: 200 + Math.random() * 200,
-                y: 150 + Math.random() * 200,
+                x: selectedNode.position.x + offsetX,
+                y: selectedNode.position.y + 250,
             },
             data: {
                 label: `Scene ${newId.split("-")[1]}`,
@@ -252,11 +274,22 @@ export function StoryFlowEditor() {
             },
         };
 
+        // Auto-create edge from selected node to new node
+        const newEdge: Edge = {
+            id: `${selectedNode.id}-${newId}`,
+            source: selectedNode.id,
+            target: newId,
+            animated: true,
+            style: { stroke: "oklch(0.7 0.15 250)", strokeWidth: 2 },
+        };
+
         setNodes((nds) => [...nds, newNode]);
+        setEdges((eds) => [...eds, newEdge]);
+
         toast.success("ノードを追加しました", {
-            description: `${nodes.length + 1}/${MAX_NODES}`,
+            description: `${selectedNode.data.label} → ${newNode.data.label}（${nodes.length + 1}/${MAX_NODES}）`,
         });
-    }, [nodes.length, setNodes]);
+    }, [nodes, edges, setNodes, setEdges]);
 
     // ── Connect with limit check ──
     const onConnect: OnConnect = useCallback(
