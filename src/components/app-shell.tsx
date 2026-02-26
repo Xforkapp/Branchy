@@ -34,7 +34,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 {/* Mobile: full-screen content */}
                 <div className="flex flex-1 overflow-hidden">
                     {/* Main view area */}
-                    <div className="flex flex-1 flex-col overflow-y-auto">
+                    <div className="flex flex-1 flex-col overflow-hidden">
                         {renderView()}
                     </div>
 

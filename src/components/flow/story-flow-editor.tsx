@@ -16,7 +16,7 @@ import {
     useReactFlow,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { Save, Loader2, CheckCircle2, Plus, AlertTriangle, Trash2, LayoutGrid } from "lucide-react";
+import { Save, Loader2, CheckCircle2, Plus, AlertTriangle, Trash2, LayoutGrid, Smartphone, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { db } from "@/lib/db";
@@ -555,6 +555,27 @@ export function StoryFlowEditor() {
                                     Save
                                 </>
                             )}
+                        </Button>
+
+                        {/* Preview (mobile) */}
+                        <Button
+                            onClick={() => toast.info("プレビュー", { description: "Coming soon — プレビュー機能は準備中です" })}
+                            size="sm"
+                            variant="outline"
+                            className="gap-1.5 shadow-lg md:hidden"
+                        >
+                            <Smartphone className="h-4 w-4" />
+                            Preview
+                        </Button>
+
+                        {/* Publish */}
+                        <Button
+                            onClick={() => toast.info("投稿", { description: "Coming soon — 投稿機能は準備中です" })}
+                            size="sm"
+                            className="gap-1.5 shadow-lg bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white border-0"
+                        >
+                            <Upload className="h-4 w-4" />
+                            Publish
                         </Button>
                     </div>
                 </Panel>
