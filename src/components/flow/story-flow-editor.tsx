@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useMemo } from "react";
 import {
     ReactFlow,
     Background,
@@ -13,9 +13,10 @@ import {
     type Edge,
     type Node,
     type OnConnect,
+    useReactFlow,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { Save, Loader2, CheckCircle2, Plus, AlertTriangle, Trash2 } from "lucide-react";
+import { Save, Loader2, CheckCircle2, Plus, AlertTriangle, Trash2, LayoutGrid } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { db } from "@/lib/db";
@@ -129,11 +130,87 @@ const DUMMY_VIDEO_URL = "https://www.w3schools.com/html/mov_bbb.mp4";
 
 let nodeIdCounter = 10;
 
+// ── Auto-layout constants ──
+const LAYOUT_NODE_WIDTH = 240;
+const LAYOUT_NODE_HEIGHT = 200;
+const LAYOUT_H_GAP = 60;
+const LAYOUT_V_GAP = 100;
+
+function computeTreeLayout(nodes: Node<VideoNodeData>[], edges: Edge[]) {
+    // Find root (start node or first node with no incoming edges)
+    const hasIncoming = new Set(edges.map((e) => e.target));
+    const root = nodes.find((n) => n.data.variant === "start")
+        || nodes.find((n) => !hasIncoming.has(n.id))
+        || nodes[0];
+    if (!root) return nodes;
+
+    // Build adjacency
+    const childrenMap = new Map<string, string[]>();
+    edges.forEach((e) => {
+        const list = childrenMap.get(e.source) || [];
+        list.push(e.target);
+        childrenMap.set(e.source, list);
+    });
+
+    // Compute subtree widths
+    const widthCache = new Map<string, number>();
+    const getSubtreeWidth = (id: string): number => {
+        if (widthCache.has(id)) return widthCache.get(id)!;
+        const children = childrenMap.get(id) || [];
+        if (children.length === 0) {
+            widthCache.set(id, LAYOUT_NODE_WIDTH);
+            return LAYOUT_NODE_WIDTH;
+        }
+        const totalChildWidth = children.reduce(
+            (sum, cid) => sum + getSubtreeWidth(cid),
+            0
+        ) + (children.length - 1) * LAYOUT_H_GAP;
+        const w = Math.max(LAYOUT_NODE_WIDTH, totalChildWidth);
+        widthCache.set(id, w);
+        return w;
+    };
+
+    // Position nodes
+    const positions = new Map<string, { x: number; y: number }>();
+    const visited = new Set<string>();
+
+    const positionNode = (id: string, x: number, y: number) => {
+        if (visited.has(id)) return;
+        visited.add(id);
+        positions.set(id, { x, y });
+        const children = childrenMap.get(id) || [];
+        if (children.length === 0) return;
+
+        const totalChildWidth = children.reduce(
+            (sum, cid) => sum + getSubtreeWidth(cid),
+            0
+        ) + (children.length - 1) * LAYOUT_H_GAP;
+
+        let startX = x + LAYOUT_NODE_WIDTH / 2 - totalChildWidth / 2;
+        const childY = y + LAYOUT_NODE_HEIGHT + LAYOUT_V_GAP;
+
+        children.forEach((cid) => {
+            const cw = getSubtreeWidth(cid);
+            positionNode(cid, startX + cw / 2 - LAYOUT_NODE_WIDTH / 2, childY);
+            startX += cw + LAYOUT_H_GAP;
+        });
+    };
+
+    getSubtreeWidth(root.id);
+    positionNode(root.id, 300, 0);
+
+    return nodes.map((n) => {
+        const pos = positions.get(n.id);
+        return pos ? { ...n, position: pos } : n;
+    });
+}
+
 export function StoryFlowEditor() {
     const [nodes, setNodes, onNodesChange] = useNodesState(defaultNodes);
     const [edges, setEdges, onEdgesChange] = useEdgesState(defaultEdges);
     const [isSaving, setIsSaving] = useState(false);
     const [isLoaded, setIsLoaded] = useState(false);
+    const { fitView } = useReactFlow();
 
     // ── Helper: count children of a node ──
     const getChildCount = useCallback(
@@ -343,6 +420,14 @@ export function StoryFlowEditor() {
         });
     }, [nodes, edges, setNodes, setEdges]);
 
+    // ── Auto-layout ──
+    const handleAutoLayout = useCallback(() => {
+        const laid = computeTreeLayout(nodes, edges);
+        setNodes(laid);
+        setTimeout(() => fitView({ padding: 0.3, duration: 400 }), 50);
+        toast.success("ノードを整列しました");
+    }, [nodes, edges, setNodes, fitView]);
+
     // ── Connect (enforce max 2 children) ──
     const onConnect: OnConnect = useCallback(
         (params) => {
@@ -407,8 +492,8 @@ export function StoryFlowEditor() {
                         {/* Node counter */}
                         <div
                             className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium shadow-lg ${nodes.length >= MAX_NODES
-                                    ? "border-amber-500/40 bg-amber-500/10 text-amber-400"
-                                    : "border-border bg-card text-muted-foreground"
+                                ? "border-amber-500/40 bg-amber-500/10 text-amber-400"
+                                : "border-border bg-card text-muted-foreground"
                                 }`}
                         >
                             {nodes.length >= MAX_NODES && (
@@ -416,6 +501,17 @@ export function StoryFlowEditor() {
                             )}
                             {nodes.length}/{MAX_NODES}
                         </div>
+
+                        {/* Auto Layout */}
+                        <Button
+                            onClick={handleAutoLayout}
+                            size="sm"
+                            variant="outline"
+                            className="gap-1.5 shadow-lg"
+                        >
+                            <LayoutGrid className="h-4 w-4" />
+                            Layout
+                        </Button>
 
                         {/* Delete Node */}
                         <Button
